@@ -101,7 +101,11 @@ rf <- randomForest(classe ~., data=pcs, type="classification", ntree=100, nodesi
 rf
 ```
 
-We again affirm that the estimate of the error rate is very small at less than 2%. We look at a plot of the error rate to see if there are any parameters that need changing (mainly ntrees). 
+We again affirm that the estimate of the error rate is very small at less than 2%. 
+
+__We estimate the out of sample error as roughly 2% based on the two-fold cross validation and the training set error.__
+
+We look at a plot of the error rate to see if there are any parameters that need changing (mainly ntrees). 
 
 ```{r}
 plot(rf)
