@@ -1,0 +1,124 @@
+ Exercise Type Prediction
+========================
+
+## author: Evan Althouse
+
+Course Project for Coursera's Practical Machine Learning course
+
+## Executive Summary
+We use training data from 6 participants, using exercise tracking devices, in order to predict the type of activity done based on several quantitative features. We train a model using a large amount of past data, and using cross validation, estimate the errors on a larger testing set. We then use the model to predict 20 test cases.
+
+## Data Import and Cleaning
+
+We begin by first loading the data and the necessary libraries.
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(randomForest)
+library(caret)
+library(ggplot2)
+
+if (!file.exists("pml-training.csv")) {
+    url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+    download.file(url, destfile = "pml-training.csv")
+}
+raw.training.data <- read.csv("pml-training.csv")
+
+if (!file.exists("pml-testing.csv")) {
+    url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+    download.file(url, destfile = "pml-testing.csv")
+}
+raw.testing.data <- read.csv("pml-testing.csv")
+
+set.seed(4444)
+```
+
+From looking at the files in Excel, we know that there are many NA values in both the training and testing set. On top of this, the first 6 columns are strictly explanatory, and give us identifying information on the data row (date, time, etc.). We exclude variables that have no use to us, based on the values in the testing set.
+
+```{r}
+out.of.testing <- numeric()
+
+for (ii in 1:ncol(raw.training.data)) {
+    if (sum(is.na(raw.testing.data[,ii])) == 20) {
+        out.of.testing <- c(out.of.testing, ii)        
+    }
+}
+
+training.data <- raw.training.data[,-out.of.testing]
+testing.data <- raw.testing.data[,-out.of.testing]
+
+training.data <- training.data[, 6:ncol(training.data)]
+testing.data <- testing.data[, 6:ncol(testing.data)]
+```
+
+We still have a relatively large feature space, so we aim to reduce the dimensionality of it with PCA. We use the prcomp() function to compute the principal components, and look at the results.
+
+```{r}
+pc <- prcomp(training.data[,2:(ncol(training.data)-1)])
+
+summary(pc)
+```
+
+We see that the first 19 components explain over 99% of the variance, so we use those as our predictors. This also requires us to translate the testing set into this new feature space. We create our final training and testing sets now.
+
+```{r}
+pcs <- as.data.frame(pc$x[,1:19])
+pcs <- cbind(pcs, classe=raw.training.data$classe)
+
+pca.testing.data <- predict(pc, testing.data[, 2:(ncol(testing.data)-1)])
+pcs.testing <- pca.testing.data[,1:19]
+```
+
+In order to prepare for training a model, we first create two folds in the data in order to do simple 2-fold cross validation.
+
+```{r}
+folds <- createDataPartition(y=pcs$classe, p=0.5, list=FALSE)
+
+firstFold <- pcs[folds,]
+secondFold <- pcs[-folds,]
+```
+
+We then perform the cross validation, training a model on the first fold, then the second fold, and testing on the opposite fold.
+
+__Side note__ - We chose a random forest model due to its performance and its intuitive nature. One of the lecture videos mentioned it being a more complex model that is difficult to interpret, but I disagree. A decision tree is one of the most intuitive models available, and a random forest is simply a collection of decision trees. 
+
+```{r}
+rf1 <- randomForest(classe ~., data=firstFold, type="classification", ntree=100, 
+                    nodesize=1, xtest=secondFold[,1:19], ytest=secondFold[,20])
+
+rf1
+
+rf2 <- randomForest(classe ~., data=secondFold, type="classification", ntree=100, 
+                    nodesize=1, xtest=firstFold[,1:19], ytest=firstFold[,20])
+
+rf2
+```
+
+We see that the test set error rates are hovering around 3%, which is acceptable for our model. We move onto the final model, utilizing the entire training set.
+
+```{r}
+rf <- randomForest(classe ~., data=pcs, type="classification", ntree=100, nodesize=1)
+
+rf
+```
+
+We again affirm that the estimate of the error rate is very small at less than 2%. We look at a plot of the error rate to see if there are any parameters that need changing (mainly ntrees). 
+
+```{r}
+plot(rf)
+```
+
+We then conclude our analysis by predicting our test cases, and readying them for submission.
+
+```{r}
+prediction <- predict(rf, pcs.testing)
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(prediction)
+```
